@@ -11,6 +11,7 @@
 (* This lab provides practice with delayed (lazy) computations,
 implemented as user code using the natural lazy behavior of
 functions. (In the next lab we explore OCaml's built-in Lazy module.)
+
 In this lab, you will use an infinite data structure, the *stream*. *)
 
 open CS51Utils ;; (* for access to timing functions *)
@@ -24,8 +25,8 @@ reading, here packaged up into a module. *)
 (* An aside: The solutions here were chosen for simplicity, not for
    efficiency. For instance, the definitions of `first`, `smap`, and
    `smap2` all force their stream argument (that is, apply it to `()`)
-   more than once. The forces occur implicitly in the calls to `head`
-   and `tail`. A more efficient implementation would force only once,
+   more than once. (The forces occur implicitly in the calls to `head`
+   and `tail`.) A more efficient implementation would force only once,
    saving the results. For instance,
 
     let rec smap (f : 'a -> 'b) (s : 'a stream) : ('b stream) = 
@@ -48,27 +49,34 @@ module LazyStream =
     type 'a stream_internal = Cons of 'a * 'a stream
      and 'a stream = unit -> 'a stream_internal ;;
       
-    (* Extracting the head and tail of a lazy stream *)
+    (* head strm -- Returns the first element of `strm`. *)
     let head (s : 'a stream) : 'a =
       let Cons (h, _t) = s () in h ;;
-      
+
+    (* tail strm -- Returns a stream containing the remaining elements
+       of `strm`. *)
     let tail (s : 'a stream) : 'a stream =
       let Cons (_h, t) = s () in t ;;
       
-    (* Extracting the first n elements of a stream into a list *)
+    (* first n strm -- Returns a list containing the first `n`
+       elements of the `strm`. *)
     let rec first (n : int) (s : 'a stream) : 'a list =
       if n = 0 then []
       else head s :: first (n - 1) (tail s) ;;
       
-    (* Mapping a function lazily over a stream *)
+    (* smap fn strm -- Returns a stream that applies the `fn` to each
+       element of `strm`. *)
     let rec smap (f : 'a -> 'b) (s : 'a stream) : ('b stream) = 
       fun () -> Cons (f (head s), smap f (tail s)) ;;
       
-    (* Mapping a binary function over two streams *)
+    (* smap2 fn strm1 strm2 -- Returns a stream that applies the `fn`
+       to corresponding elements of `strm1` and `strm2`. *)
     let rec smap2 f s1 s2 = 
       fun () -> Cons (f (head s1) (head s2),
                       smap2 f (tail s1) (tail s2)) ;;
   end ;;
+
+(* We open the module for ease of access throguhout this lab. *)
   
 open LazyStream ;;
   
@@ -86,15 +94,15 @@ without looking them up. *)
 Exercise 1. An infinite stream of the integer 2. As usual, for this
 and all succeeding exercises, you shouldn't feel beholden to how the
 definition is introduced in the skeleton code below. (We'll stop
-mentioning this now, and forevermore.) 
+mentioning this now, and forevermore.)
 ....................................................................*)
 
 let rec twos =
   fun () -> Cons (2, twos) ;;
 
 (*....................................................................
-Exercise 2. An infinite stream of threes, built from the ones and
-twos.
+Exercise 2. An infinite stream of threes, built by summing the ones
+and twos.
 ....................................................................*)
 
 let threes =
@@ -121,7 +129,7 @@ initial value.
 
     let nats : int stream = nats_from 0 ;;
 
-or, hiding the `nats_from` outside the definition of `nats`,
+or, hiding the `nats_from` inside the definition of `nats`,
 
     let nats : int stream =
       let rec nats_from (n : int) : int stream =
@@ -185,17 +193,15 @@ like folding and filtering. So let's implement some. *)
 
 (*....................................................................
 Exercise 6. Define a function `sfilter` that takes a predicate (that
-is, a function returning a bool) and a stream, and returns the stream
-that contains all the elements in the argument stream that satisfy the
-predicate. Here's an example -- generating a stream of even numbers by
-filtering the natural numbers for the evens:
+is, a function returning a `bool`) and a stream, and returns the
+stream that contains all the elements in the argument stream that
+satisfy the predicate. Here's an example -- generating a stream of
+even numbers by filtering the natural numbers for the evens:
 
    # let evens = sfilter (fun x -> x mod 2 = 0) nats ;;
    val evens : int stream = <fun>
    # first 10 evens ;;
    - : int list = [0; 2; 4; 6; 8; 10; 12; 14; 16; 18]
-
-Now define `sfilter`.
 ....................................................................*)
 
 (* The most straightforward way to implement filtering (though not
@@ -223,7 +229,7 @@ Now define `sfilter`.
 
    This is the version we use below.
 
-   Another set of variations involve moving the test of the head
+   Another set of variations involves moving the test of the head
    outside the "thunk". In that case, `sfilter` verifies the `pred`
    condition on the head of the stream *before* doing any postponement
    of the tail. It thus eagerly filters out non-pred elements,
@@ -263,7 +269,7 @@ let rec sfilter (pred : 'a -> bool) (s : 'a stream) : 'a stream =
   
 (*....................................................................
 Exercise 7. Now redefine `evens` and `odds` (as `evens2` and `odds2`)
-using `sfilter`.
+by using `sfilter` to filter over `nats`.
 ....................................................................*)
 
 let even x = (x mod 2) = 0 ;;
@@ -282,24 +288,51 @@ list and then apply the sieve to that tail. The first few steps go
 something like this: We start with the natural numbers (in the example
 here, just a prefix of them).
 
-2 3 4 5 6 7 8 9 10 11 12 13 14 15...
+    2 3 4 5 6 7 8 9 10 11 12 13 14 15...
 
 The first element, 2, is prime. Now we remove numbers divisible by 2
 from the tail of the list (marking here with a | the boundary between
 the first element and the tail we're currently working on:
 
-2  |  3 5 7 9 11 13 15...
+    2  |  3 5 7 9 11 13 15...
 
 and apply the sieve to the tail:
 
-2 3  |  5 7 11 13
+    2 3  |  5 7 11 13
 
 and again:
 
-2 3 5  |  7 11 13
-2 3 5 7  |  11 13
-...
-2 3 5 7 11 13
+    2 3 5  |  7 11 13
+    2 3 5 7  |  11 13
+    ...
+    2 3 5 7 11 13
+
+Here's the process of seiving a stream of numbers in more detail:
+
+    1. Retrieve the head and tail of the stream. The head is the first
+       prime in the result stream; the tail is the list of remaining
+       elements that have not been sieved yet. For instance,
+
+       head      | tail
+       2         | 3 4 5 6 7 8 9 10 11 ...
+
+    2. Filter out all multiples of the head from the tail.
+
+       head      | filtered tail
+       2         | 3 5 7 9 11 ...
+
+    3. Sieve the filtered tail to generate all primes starting with the
+       first element of the tail.
+
+       head      | sieved filtered tail
+       2         | 3 5 7 11 ...
+
+    4. Add the head on the front of the sieved results.
+
+       2 3 5 7 11 ...
+
+    5. Of course, this whole series of computations (1 through 4)
+       should be delayed, and only executed when forced to do so.
 
 ......................................................................
 Exercise 9. Implement Eratosthenes sieve to generate an infinite
@@ -326,64 +359,37 @@ code on my laptop:
 
 Just generating the first eight primes takes three seconds -- longer
 if a less efficient `sfilter` is used.  You'll address this
-performance problem in the next lab.) *)
+performance problem in the next lab.)
 
-(* In defining the `sieve` function, the following function may be
+In defining the `sieve` function, the following function may be
 useful: *)
-
+   
 (* not_div_by n m -- Predicate returns true if `m` is not evenly
    divisible by `n` *)
 let not_div_by (n : int) (m : int) : bool = 
   not (m mod n = 0) ;;
 (*..................................................................*)
   
-(* The idea in implementing sieve is as follows:
+(* A direct implementation of the 5-step process above (with numbers
+   keyed to the description) would be:
 
-   1. Retrieve the head and tail of the stream. The head is the first
-      prime in the result stream; the tail is the list of remaining
-      elements that have not been sieved yet. For instance,
-
-      head      | tail
-      2         | 3 4 5 6 7 8 9 10 11 ...
-
-   2. Filter out all multiples of the head from the tail.
-
-      head      | filtered tail
-      2         | 3 5 7 9 11 ...
-
-   3. Sieve the filtered tail to generate all primes starting with the
-      first element of the tail.
-
-      head      | sieved filtered tail
-      2         | 3 5 7 11 ...
-
-   4. Add the head on the front of the sieved results.
-
-      2 3 5 7 11 ...
-
-   5. Of course, this whole series of computations should be delayed,
-      and only executed when forced to do so.
-
-A direct implementation of this idea (with numbers keyed to the
-description above) would be:
-
-let rec sieve s =
-  fun () -> Cons (head s, sieve (sfilter (not_div_by (head s)) (tail s))) ;;
-    ^         ^     ^        ^      ^                              ^
-    |         |     |        |      |                              |
-    5         4     1        3      2                              1
+    let rec sieve s =
+      fun () -> Cons (head s, sieve (sfilter (not_div_by (head s)) (tail s))) ;;
+        ^         ^     ^        ^      ^                              ^
+        |         |     |        |      |                              |
+        5         4     1        3      2                              1
   
-But as in `sfilter` above this forces `s` multiple times. Instead, we
-can force once and save the results:
+   But as in `sfilter` above this forces `s` multiple times. Instead,
+   we can force once and save the results:
 
-let rec sieve s =
-  fun () -> 
-    let Cons (hd, tl) = s () in
-    Cons (hd, sieve (sfilter (not_div_by hd) tl)) ;; 
+    let rec sieve s =
+      fun () -> 
+        let Cons (hd, tl) = s () in
+        Cons (hd, sieve (sfilter (not_div_by hd) tl)) ;; 
 
-Finally, the force of `s` can be done before delaying the rest of the
-computation, as we do below, or after, as above. (Either way requires
-essentially the same amount of time.) *)
+   Finally, the force of `s` can be done before delaying the rest of the
+   computation, as we do below, or after, as above. (Either way requires
+   essentially the same amount of time.) *)
   
 let rec sieve (s : int stream) : int stream =
   let Cons (hd, tl) = s () in
@@ -394,21 +400,22 @@ let rec sieve (s : int stream) : int stream =
 
 let primes : int stream = sieve (tail (tail nats)) ;;
 
-(* For ftesting purposes (and just for fun), we generate a table of
+(* For testing purposes (and just for fun), we generate a table of
 some times to generate primes, stopping as soon as the next prime
 takes more than half a second: *)
 
 exception Done ;;
 
 let prime_timing () =
-  try
-    print_endline "Testing sieve based on lazy streams";
-    for n = 1 to 100 do
-      let _l, t = Absbook.call_timed (first n) primes in
-      Printf.printf "%3d -- %12.8f\n" n t;
-      if t > 0.5 then raise Done
-    done
-  with Done -> () ;;
+  print_endline "Testing sieve based on lazy streams";
+  let n = ref 1 in
+  let finished = ref false in
+  while not !finished && !n < 100 do
+    let _l, t = Absbook.call_timed (first !n) primes in
+    Printf.printf "%3d -- %12.8f\n" !n t;
+    n := succ !n;
+    if t > 0.5 then finished := true
+  done ;;
 
 let _ = prime_timing () ;;
 
